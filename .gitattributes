@@ -2,3 +2,8 @@
 *.py linguist-language=Python
 *.pyw linguist-language=Python
 *.pyi linguist-language=Python
+static/js/* linguist-vendored
+static/lib/* linguist-vendored
+static/vendor/* linguist-vendored
+templates/static/* linguist-vendored
+assets/js/* linguist-vendored
