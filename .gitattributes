@@ -1,11 +1,6 @@
 # 将.py文件强制标记为 Python
 *.py linguist-language=Python
-*.pyw linguist-language=Python
-*.pyi linguist-language=Python
-static/js/* linguist-vendored
-static/lib/* linguist-vendored
-static/vendor/* linguist-vendored
-templates/static/* linguist-vendored
-assets/js/* linguist-vendored
-*.html linguist-detectable=false
+static/element-plus/* linguist-vendored
+static/* linguist-vendored
+#*.html linguist-detectable=false
 *.js linguist-detectable=false
