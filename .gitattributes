@@ -1,0 +1,4 @@
+# 将.py文件强制标记为 Python
+*.py linguist-language=Python
+*.pyw linguist-language=Python
+*.pyi linguist-language=Python
