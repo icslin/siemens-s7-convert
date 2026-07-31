@@ -7,3 +7,5 @@ static/lib/* linguist-vendored
 static/vendor/* linguist-vendored
 templates/static/* linguist-vendored
 assets/js/* linguist-vendored
+*.html linguist-detectable=false
+*.js linguist-detectable=false
