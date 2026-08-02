@@ -62,19 +62,37 @@
 
 ## 三、安装部署指南
 
+
 ### 3.1 快速部署（无需安装）
 
 1. 下载工具压缩包，解压至任意目录
 
 2. 必备文件清单（解压后需完整保留）：
 
-   * 可执行文件：Snap7Client3.5.8.exe
+   * 可执行文件：Snap7Client3.5.*.exe
 
    * 依赖文件：config.ini、ztest.csv（点位配置文件）
 
 3. 直接双击运行 Snap7Client3.5.\*.exe（windwos平台）或执行 snap7client3.5.*（linux平台），即可启动服务
 
 ### 3.2 源码部署（Windows/Linux 通用）
+
+🔈**使用网页浏览数据库离线时需要下载静态资源**
+
+> Vue3：https://cdn.bootcdn.net/ajax/libs/vue/3.3.8/vue.global.prod.min.js  
+ECharts：https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js  
+Element Plus CSS：https://cdn.bootcdn.net/ajax/libs/element-plus/2.8.0/index.min.css  
+Element Plus JS：https://cdn.bootcdn.net/ajax/libs/element-plus/2.8.0/index.full.min.js
+
+**存放位置**
+
+/static/**vue.global.prod.min.js**
+
+/static/**echarts.min.js**
+
+/static/element-plus/**index.full.min.js**
+
+/static/element-plus/**index.min.css**
 
 #### 3.2.1 环境准备
 
