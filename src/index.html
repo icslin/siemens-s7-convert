@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLite数据分析平台</title>
+    <script src="./static/vue.global.prod.min.js"></script>
+    <link rel="stylesheet" href="./static/element-plus/index.min.css">
+    <script src="./static/element-plus/index.full.min.js"></script>
+    <script src="./static/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft Yahei", sans-serif; background-color: #f5f7fa; height: 100vh; }
+        .container { height: 100vh; display: flex; flex-direction: column; }
+        .header { background: #409eff; color: white; padding: 16px 24px; display: flex; align-items: center; gap: 20px; box-shadow: 0 2px 8px #0000001a; }
+        .main-wrap { flex: 1; display: flex; overflow: hidden; }
+        .sidebar { width: 300px; background: white; border-right: 1px solid #e4e7ed; padding: 16px; overflow-y: auto; }
+        .sidebar-block{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eee;}
+        .db-item {display:block;margin:4px 0;cursor:pointer;padding:4px 6px;border-radius:4px;}
+        .db-item:hover{background:#ecf5ff;}
+        .db-path-text{font-size:12px;color:#888;word-break:break-all;}
+        .table-item { display:block; margin:4px 0; }
+        .content { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+        .card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px #0000000d; }
+        .chart-box { height: 400px; width: 100%; }
+        .field-tag { margin: 6px 4px; position: relative; cursor: default; transition: all 0.2s; }
+        .tag-text { cursor: pointer; }
+        .el-tag__close {
+            z-index: 99 !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+        .time-row { display: flex; gap:12px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+        .btn-group-gap {
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-top:10px;
+        }
+        .col-filter-row{
+            display:flex;
+            gap:12px;
+            align-items:center;
+            margin-bottom:12px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+<div id="app" class="container">
+    <div class="header">
+        <h2>SQLite 数据分析平台</h2>
+        <el-upload :http-request="uploadDb" :show-file-list="false">
+            <el-button type="primary" plain>上传 .db / .sqlite 文件</el-button>
+        </el-upload>
+        <span v-if="filename">当前数据库：{{ filename }}</span>
+    </div>
+    <div class="main-wrap">
+        <div class="sidebar">
+            <div class="sidebar-block">
+                <h4 style="margin-bottom:12px">📁 本地数据库列表（./snap7/sqlite）</h4>
+                <el-empty v-if="localDbList.length===0" description="目录未找到数据库"></el-empty>
+                <div v-for="db in localDbList" :key="db.rel_path" class="db-item" @click="loadLocalDatabase(db)">
+                    <div>{{db.filename}}</div>
+                    <div class="db-path-text">{{db.rel_path}}</div>
+                </div>
+            </div>
+            <h4 style="margin-bottom:12px">📋 当前库数据表列表</h4>
+            <el-empty v-if="!tableList.length" description="请先选择数据库"></el-empty>
+            <el-radio v-model="currentTable" v-for="t in tableList" :key="t.table_name" :label="t.table_name" class="table-item">
+                {{ t.table_name }}
+            </el-radio>
+        </div>
+        <div class="content">
+            <div class="card" v-if="currentTable">
+                <h4>字段选择</h4>
+                <div style="margin:10px 0">
+                    <el-tag 
+                        class="field-tag" 
+                        v-for="f in filterFields" 
+                        :key="f.name"
+                        closable
+                        disable-transitions
+                        @close="removeField(f.name)"
+                        :style="getTagStyle(f.name)"
+                    >
+                        <span class="tag-text" @click="selectField(f.name)">{{ f.name }}</span>
+                    </el-tag>
+                </div>
+                <div class="time-row">
+                    <span>筛选时间段：</span>
+                    <el-date-picker 
+                        v-model="startDate" 
+                        type="datetime" 
+                        placeholder="起始时间" 
+                        value-format="YYYY-MM-DD HH:mm:ss"
+                        style="width:220px"
+                    ></el-date-picker>
+                    <el-date-picker 
+                        v-model="endDate" 
+                        type="datetime" 
+                        placeholder="结束时间"
+                        value-format="YYYY-MM-DD HH:mm:ss"
+                        style="width:220px"
+                    ></el-date-picker>
+                    <span style="color:#666">长时间范围自动启用聚合 | 导出CSV将附带选中字段+时间</span>
+                </div>
+                <div class="btn-group-gap">
+                    <el-button type="success" @click="loadChartData" :disabled="selectedFields.length < 1">生成图表</el-button>
+                    <el-radio-group v-model="chartType">
+                        <el-radio label="line">折线图</el-radio>
+                        <el-radio label="bar">柱状图</el-radio>
+                    </el-radio-group>
+                    <el-button type="warning" @click="exportCsv" :disabled="selectedFields.length<1">导出当前选中字段CSV</el-button>
+                    <el-button type="info" @click="clearSelectedFields">清空选中字段</el-button>
+                    <el-button type="danger" @click="clearServerCache">清除后端缓存</el-button>
+                </div>
+            </div>
+            <div class="card" v-if="chartData.labels.length > 0">
+                <div ref="chartRef" class="chart-box"></div>
+            </div>
+            <div class="card" v-if="tableData.headers.length > 0">
+                <h4>数据预览（共{{ tableData.total }}条，字段总数：{{tableData.headers.length}}）</h4>
+                <div v-if="isHugeColumnTable" class="col-filter-row">
+                    <!-- 回车刷新表格 -->
+                    <el-input 
+                        v-model="tableColumnKeyword" 
+                        placeholder="多个字段使用【空格、英文逗号、中文逗号】分隔，精确匹配字段名" 
+                        clearable 
+                        style="width:450px"
+                        @keyup.enter="loadTableData"
+                    ></el-input>
+                    <span style="color:#f56c6c">⚠️ 本表字段超过{{MAX_TABLE_COL}}个；无论筛选什么字段，id、record_date、record_time固定显示</span>
+                </div>
+                <!-- 使用带真实索引的字段对象渲染，解决数据错位 -->
+                <el-table :data="tableData.rows" border stripe max-height="300" style="margin-top:10px">
+                    <template v-for="colInfo in previewColList" :key="colInfo.name">
+                        <el-table-column :label="colInfo.name">
+                            <template #default="scope">
+                                {{ scope.row[colInfo.realIndex] }}
+                            </template>
+                        </el-table-column>
+                    </template>
+                </el-table>
+                <el-pagination 
+                    @current-change="pageChange" 
+                    v-model:current-page="page" 
+                    :page-size="100" 
+                    :total="tableData.total"
+                    layout="prev, pager, next, total" 
+                    style="margin-top:10px"
+                />
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const { createApp, ref, watch, nextTick, computed,onMounted } = Vue;
+const { ElMessage } = ElementPlus;
+const BASE_URL = "/api";
+createApp({
+    setup() {
+        const fileId = ref("");
+        const filename = ref("");
+        const tableList = ref([]);
+        const currentTable = ref("");
+        const currentTableFields = ref([]);
+        const selectedFields = ref([]);
+        const tableData = ref({ headers: [], rows: [], total: 0 });
+        const page = ref(1);
+        const PAGE_SIZE = 100;
+        const chartRef = ref(null);
+        let chartInstance = null;
+        const chartType = ref("line");
+        const chartData = ref({ labels: [], series: {} });
+        const startDate = ref("");
+        const endDate = ref("");
+        const localDbList = ref([]);
+        const MAX_TABLE_COL = 80;
+        // 固定强制展示的基础时间主键列
+        const FIX_COLUMNS = ["id", "record_date", "record_time"];
+        const tableColumnKeyword = ref("");
+        const colorPool = [
+            "#409EFF", "#67C23A", "#E6A23C", "#F56C6C", "#909399",
+            "#00B42A", "#FF7D00", "#722ED1", "#14C9C9", "#F7BA1E"
+        ];
+
+        // 计算最大页码
+        const maxPage = computed(()=>{
+            const total = tableData.value.total;
+            if(total <= 0) return 1;
+            return Math.ceil(total / PAGE_SIZE);
+        })
+
+        // 判断是否为超大字段表（超过80列启用字段过滤输入框）
+        const isHugeColumnTable = computed(()=>{
+            return tableData.value.headers.length > MAX_TABLE_COL;
+        })
+
+        /**
+         * 分割多字段输入文本
+         * 支持分隔符：空格、英文逗号,、中文逗号，自动过滤空字符串
+         * @param {string} str 用户输入的多字段文本
+         * @returns {string[]} 分割后的字段名数组
+         */
+        const parseMultiFieldNames = (str) => {
+            if(!str.trim()) return [];
+            const splitReg = /[,，\s]+/;
+            return str.trim().split(splitReg).filter(s=>s.length>0);
+        }
+
+        /**
+         * 数组去重工具函数
+         * @param {Array} arr 待去重数组
+         * @returns {Array} 无重复新数组
+         */
+        const uniqueArray = (arr) => {
+            const set = new Set();
+            return arr.filter(item => {
+                if(set.has(item)) return false;
+                set.add(item);
+                return true;
+            })
+        }
+
+        /**
+         * 第一步：生成预览表头名称数组（已修复按用户输入顺序排列）
+         */
+        const previewHeaders = computed(()=>{
+            const allHeaders = tableData.value.headers;
+            // 字段少于80列，直接展示全部表头，无需过滤
+            if(!isHugeColumnTable.value) return allHeaders;
+
+            const kwText = tableColumnKeyword.value;
+            // 拆分用户输入的字段列表
+            const targetNames = parseMultiFieldNames(kwText);
+            // 先放入固定强制显示的id、日期、时间列
+            let result = [...FIX_COLUMNS];
+
+            if(targetNames.length === 0){
+                // 用户未输入任何筛选字段：固定列 + 剩余字段前17条
+                const restCols = allHeaders.filter(name => !FIX_COLUMNS.includes(name));
+                result = [...result, ...restCols.slice(0,17)];
+            }else{
+                // 按用户输入顺序组装字段，不再按原表头过滤
+                const userCols = [];
+                for(const fieldName of targetNames){
+                    // 校验：字段存在于表头 且 不是固定基础列
+                    if(allHeaders.includes(fieldName) && !FIX_COLUMNS.includes(fieldName)){
+                        userCols.push(fieldName);
+                    }
+                }
+                // 拼接固定列 + 用户按顺序输入的筛选字段
+                result = [...result, ...userCols];
+            }
+            // 过滤不存在的字段并去重
+            return uniqueArray(result.filter(name => allHeaders.includes(name)));
+        })
+
+        /**
+         * 【核心修复】第二步：给每个预览字段绑定原始真实索引，解决数据错位
+         * 返回结构 [{name:"字段名", realIndex:后端原生下标}, ...]
+         */
+        const previewColList = computed(()=>{
+            const headers = tableData.value.headers;
+            const previewNames = previewHeaders.value;
+            // 构建字段名→原生下标映射
+            const nameToIdx = {};
+            headers.forEach((name, idx)=>{
+                nameToIdx[name] = idx;
+            })
+            // 组装带真实索引的列表
+            return previewNames.map(name=>{
+                return {
+                    name: name,
+                    realIndex: nameToIdx[name]
+                }
+            })
+        })
+
+        // 过滤掉固定基础列，仅展示可勾选的图表字段
+        const filterFields = computed(()=>{
+            const banNames = [...FIX_COLUMNS];
+            return currentTableFields.value.filter(item=> !banNames.includes(item.name))
+        })
+
+        // 根据选中下标获取标签配色索引
+        const getFieldColorIndex = (fieldName) => {
+            const idx = selectedFields.value.indexOf(fieldName);
+            return idx >= 0 ? idx % colorPool.length : -1;
+        }
+
+        // 生成字段标签样式（选中高亮配色，未选中灰色）
+        const getTagStyle = (fieldName) => {
+            const colorIdx = getFieldColorIndex(fieldName);
+            if(colorIdx === -1){
+                return {
+                    backgroundColor: "#ffffff",
+                    color: "#303133",
+                    borderColor: "#dcdfe6"
+                }
+            }
+            const bgColor = colorPool[colorIdx];
+            return {
+                backgroundColor: bgColor,
+                color: "#ffffff",
+                borderColor: bgColor,
+                fontWeight: "bold"
+            }
+        }
+
+        // 页面挂载后自动加载本地数据库列表
+        onMounted(async ()=>{
+            await refreshLocalDbList();
+        })
+
+        // 刷新本地./snap7/sqlite目录下所有db/sqlite文件
+        const refreshLocalDbList = async ()=>{
+            const res = await fetch(`${BASE_URL}/local_dbs`);
+            const json = await res.json();
+            if(json.code===200){
+                localDbList.value = json.data;
+            }
+        }
+
+        // 加载本地选中的数据库文件
+        const loadLocalDatabase = async (dbInfo)=>{
+            try{
+                const res = await fetch(`${BASE_URL}/load_local_db`,{
+                    method:"POST",
+                    headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({path:dbInfo.full_path})
+                })
+                const json = await res.json();
+                if(json.code!==200){
+                    return ElMessage.error(json.msg);
+                }
+                fileId.value = json.data.file_id;
+                filename.value = json.data.filename;
+                ElMessage.success("已加载数据库："+dbInfo.filename);
+                resetAllData();
+                loadTables();
+            }catch(err){
+                ElMessage.error("加载数据库失败");
+            }
+        }
+
+        // 上传外部sqlite/db临时文件
+        const uploadDb = async (opt) => {
+            try {
+                const formData = new FormData();
+                formData.append("file", opt.file);
+                const res = await fetch(`${BASE_URL}/upload`, { method: "POST", body: formData });
+                const json = await res.json();
+                if (json.code !== 200) return ElMessage.error(json.msg);
+                fileId.value = json.data.file_id;
+                filename.value = json.data.filename;
+                ElMessage.success("上传成功");
+                resetAllData();
+                loadTables();
+            } catch (err) {
+                ElMessage.error("后端未启动！");
+            }
+        }
+
+        // 切换数据库/表格时重置全部页面状态
+        const resetAllData = ()=>{
+            tableList.value = [];
+            currentTable.value = "";
+            selectedFields.value = [];
+            tableData.value = { headers: [], rows: [], total: 0 };
+            chartData.value = { labels: [], series: {} };
+            startDate.value = "";
+            endDate.value = "";
+            page.value = 1;
+            tableColumnKeyword.value = "";
+        }
+
+        // 获取当前数据库所有表结构（表名+字段）
+        const loadTables = async () => {
+            const res = await fetch(`${BASE_URL}/tables?file_id=${fileId.value}`);
+            const json = await res.json();
+            if (json.code !== 200) return ElMessage.error(json.msg);
+            tableList.value = json.data;
+        }
+
+        // 监听表格切换，切换后重置分页、字段、图表、筛选文本并加载表格数据
+        watch(currentTable, async (tableName) => {
+            if (!tableName) return;
+            page.value = 1;
+            selectedFields.value = [];
+            chartData.value = { labels: [], series: {} };
+            startDate.value = "";
+            endDate.value = "";
+            tableColumnKeyword.value = "";
+            const tableInfo = tableList.value.find(t => t.table_name === tableName);
+            if (!tableInfo) return;
+            currentTableFields.value = tableInfo.fields;
+            await loadTableData();
+        })
+
+        // 加载当前表格分页原始数据
+        const loadTableData = async () => {
+            const offset = (page.value - 1) * PAGE_SIZE;
+            const res = await fetch(`${BASE_URL}/table_data?file_id=${fileId.value}&table=${currentTable.value}&limit=${PAGE_SIZE}&offset=${offset}`);
+            const json = await res.json();
+            if (json.code !== 200) return ElMessage.error(json.msg);
+            tableData.value = json.data;
+        }
+
+        // 分页切换事件处理，拦截超出最大/最小页码
+        const pageChange = (newPage) => {
+            if(newPage > maxPage.value || newPage < 1){
+                ElMessage.warning("超出有效页码范围");
+                page.value = maxPage.value;
+                return;
+            }
+            loadTableData();
+        }
+
+        // 点击字段标签，加入图表选中列表
+        const selectField = (name) => {
+            if (!selectedFields.value.includes(name)) {
+                selectedFields.value.push(name);
+            }
+        }
+
+        // 关闭字段标签，移除图表选中列表
+        const removeField = (name) => {
+            const idx = selectedFields.value.indexOf(name);
+            if (idx > -1) selectedFields.value.splice(idx, 1);
+        }
+
+        // 清空所有图表选中字段，重置图表
+        const clearSelectedFields = () => {
+            selectedFields.value = [];
+            chartData.value = { labels: [], series: {} };
+            ElMessage.success("已清空选中字段");
+        }
+
+        // 清空后端临时上传缓存，重置页面全部状态
+        const clearServerCache = async () => {
+            try {
+                const res = await fetch(`${BASE_URL}/clear_cache`, {method:"POST"});
+                const json = await res.json();
+                if(json.code === 200){
+                    fileId.value = "";
+                    filename.value = "";
+                    resetAllData();
+                    await refreshLocalDbList();
+                    ElMessage.success("临时缓存已清除");
+                }else{
+                    ElMessage.error(json.msg);
+                }
+            }catch(err){
+                ElMessage.error("清除缓存失败，请确认服务正常运行");
+            }
+        }
+
+        // 请求后端聚合时序图表数据
+        const loadChartData = async () => {
+            const yList = selectedFields.value;
+            const params = new URLSearchParams();
+            params.append("file_id", fileId.value);
+            params.append("table", currentTable.value);
+            yList.forEach(y => params.append("y", y));
+            
+            if (startDate.value && endDate.value) {
+                params.append("start", startDate.value);
+                params.append("end", endDate.value);
+            }
+            const res = await fetch(`${BASE_URL}/chart_agg?${params.toString()}`);
+            const json = await res.json();
+            if (json.code !== 200) return ElMessage.error(json.msg);
+            chartData.value = json.data;
+            nextTick(renderChart);
+        }
+
+        // ECharts渲染图表函数（修复tooltip强制两位小数问题）
+        const renderChart = () => {
+            if (!chartRef.value) return;
+            if (chartInstance) chartInstance.dispose();
+            chartInstance = echarts.init(chartRef.value);
+            const series = [];
+            selectedFields.value.forEach((fieldName,index)=>{
+                series.push({
+                    name: fieldName,
+                    type: chartType.value,
+                    data: chartData.value.series[fieldName],
+                    color: colorPool[index % colorPool.length],
+                    sampling: 'lttb',
+                    large: true,
+                    largeThreshold: 800
+                })
+            })
+            const option = {
+                tooltip: {
+                    trigger: "axis",
+                    formatter: function(params) {
+                        let html = params[0].axisValue + "<br />";
+                        params.forEach(item => {
+                            let val = item.value;
+                            let showVal;
+                            if (Number.isInteger(val)) {
+                                showVal = val.toString();
+                            } else {
+                                let str = val.toPrecision(15);
+                                const parts = str.split('.');
+                                if (parts.length === 1) {
+                                    showVal = str;
+                                } else {
+                                    let decimal = parts[1].replace(/0+$/, '');
+                                    if (decimal === '') {
+                                        showVal = parts[0];
+                                    } else {
+                                        showVal = parts[0] + '.' + decimal;
+                                    }
+                                }
+                            }
+                            html += item.marker + item.seriesName + "：" + showVal + "<br />";
+                        })
+                        return html;
+                    }
+                },
+                dataZoom: [
+                    { type: 'slider', xAxisIndex: 0, height: 22 }
+                ],
+                xAxis: {
+                    type: "category",
+                    data: chartData.value.labels,
+                    axisLabel: {
+                        hideOverlap: true,
+                        rotate: 30
+                    }
+                },
+                yAxis: {
+                    type: "value",
+                    scale: false,
+                    splitLine: {
+                        lineStyle: {
+                            type: 'solid'
+                        }
+                    },
+                    axisLine: {
+                        onZero: true
+                    },
+                    axisTick: {
+                        show: true
+                    }
+                },
+                series
+            };
+            chartInstance.setOption(option);
+        }
+
+        // 切换折线/柱状图类型自动重绘图表
+        watch(chartType, () => {
+            if (chartData.value.labels.length) renderChart();
+        })
+
+        // 导出筛选字段+时间范围CSV文件
+        const exportCsv = () => {
+            if(selectedFields.value.length < 1){
+                ElMessage.warning("请先选择导出字段");
+                return;
+            }
+            const params = new URLSearchParams();
+            params.append("file_id", fileId.value);
+            params.append("table", currentTable.value);
+            selectedFields.value.forEach(f=>params.append("field",f));
+            if(startDate.value && endDate.value){
+                params.append("start", startDate.value);
+                params.append("end", endDate.value);
+            }
+            const url = `${BASE_URL}/export_csv?${params.toString()}`;
+            const a = document.createElement("a");
+            a.href = url;
+            a.click();
+            ElMessage.success("开始下载CSV（GBK编码，Excel直接打开）");
+        }
+
+        return {
+            fileId, filename, tableList, currentTable, currentTableFields, selectedFields,
+            tableData, page, chartRef, chartType, chartData,
+            startDate, endDate, filterFields,localDbList,
+            uploadDb, loadTables, pageChange, selectField, removeField, loadChartData, exportCsv,
+            getTagStyle, clearSelectedFields, clearServerCache,loadLocalDatabase,refreshLocalDbList,maxPage,
+            MAX_TABLE_COL,isHugeColumnTable,tableColumnKeyword,previewHeaders,
+            loadTableData,
+            previewColList
+        }
+    }
+}).use(ElementPlus).mount("#app")
+</script>
+</body>
+</html>
