@@ -1,10 +1,11 @@
 # 西门子 S7 通讯协议转换工具说明文档
 
-<p align="center">
+<p align="left">
 <a href="https://img.shields.io/badge/Python-3.8%2B-blue"><img alt="Version" title="Version" src="https://img.shields.io/badge/Python-3.8%2B-blue" /></a>
 <a href="https://img.shields.io/badge/License-MIT-green"><img alt="License" title="License" src="https://img.shields.io/badge/License-MIT-green" /></a>
 <a href="https://img.shields.io/badge/Star-欢迎点亮-orange"><img alt="Lint & Test" title="Lint & Test" src="https://img.shields.io/badge/Star-欢迎点亮-orange" /></a>
 <br/>
+
 
 ## 一、项目概述
 
@@ -25,7 +26,7 @@
 
 * 运行环境：Windows（32/64 位）、Linux（CentOS/Ubuntu 等）
 
-* 稳定性：已在实际工业项目中稳定运行 1 年以上，无重大通讯故障记录
+* 稳定性：已在实际工业项目中稳定运行>8760小时，无重大通讯故障记录
 
 ## 二、核心功能特性
 
@@ -69,15 +70,15 @@
 
 2. 必备文件清单（解压后需完整保留）：
 
-   * 可执行文件：Snap7Client3.5.*.exe
+   * 可执行文件：Snap7Client.exe
 
    * 依赖文件：config.ini、ztest.csv（点位配置文件）
 
-3. 直接双击运行 Snap7Client3.5.\*.exe（windwos平台）或执行 snap7client3.5.*（linux平台），即可启动服务
+3. 直接双击运行 Snap7Client3.5.exe（windwos平台）或执行 snap7client（linux平台），即可启动服务
 
 ### 3.2 源码部署（Windows/Linux 通用）
 
-🔈**使用网页浏览数据库离线时需要下载静态资源**
+🔈**使用网页浏览数据库离线时需要下载静态资源（联网自动下载）**
 
 > Vue3：https://cdn.bootcdn.net/ajax/libs/vue/3.3.8/vue.global.prod.min.js  
 ECharts：https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js  
@@ -112,7 +113,7 @@ Element Plus JS：https://cdn.bootcdn.net/ajax/libs/element-plus/2.8.0/index.ful
 
 需确保源码目录下包含以下文件：
 
-* 核心脚本：Snap7Client3.5.*.py、Mqtt_Server.py、public_lib.py、iec104_Server.py、Modbus_Server.py、web_api.py、Sqlite_OP.py、data_viewer.py
+* 核心脚本：Snap7Client.py、Mqtt_Server.py、public_lib.py、iec104_Server.py、Modbus_Server.py、web_api.py、Sqlite_OP.py、data_viewer.py
 
 * 配置文件：config.ini（协议参数配置）、ztest.csv（点位配置文件，可自定义命名）
 
@@ -122,10 +123,10 @@ Element Plus JS：https://cdn.bootcdn.net/ajax/libs/element-plus/2.8.0/index.ful
 
 ```
 # Windows平台
-python Snap7Client3.5.*.py
+python Snap7Client.py
 
 # Linux平台
-python3 Snap7Client3.5.*.py
+python3 Snap7Client.py
 ```
 
 ## 四、详细配置说明
@@ -320,17 +321,14 @@ python3 Snap7Client3.5.*.py
 
 | 版本号    | 更新日期       | 核心更新内容       |
 | ------ | ---------- | ------------------------- |
+| v3.5.14 | 2026-08-18 | Snap7Client.py完善注释，数据查询功能优化前端操作，优化写逻辑，消除写与读的冲突导致出现写失败的情况 |
+| v3.5.12 | 2026-08-12 | 新增自动检测前端静态优化mdobus数据显示逻辑；对入库字段含特殊符号进行处理，保证顺利入库 |
+| v3.5.12 | 2026-08-02 | 新增自动检测前端静态资源，缺失自动下载 |
 | v3.5.11 | 2026-07-31 | 修复图表小数点显示问题，修复超80字段后字段筛选数据显示异常的bug，优化modbus和iec104写逻辑 |
 | v3.5.10 | 2026-07-28 | 新增sqlite数据库查询，导出功能;修复远程重启，一致累加设备实例的bug;优化打印区域 |
 | v3.5.9 | 2026-07-25 | 优化modbus写逻辑 |
 | v3.5.8 | 2026-07-12 | 增加测点归档功能，使用Sqlite数据库 |
 | v3.5.6 | 2026-07-10 | 使用豆包AI轻量重构;修复iec104协议写有符号数据显示问题;修复mqtt和webapi下发不存在的标签或plc名时无限循环的问题 |
-| v3.5.5 | 2026-03-21 | 转换协议下发写plc数据，支持超时时重发，限定重发次数,snap7库更新为3.0.0 |
-| v3.5.4 | 2025-12-29 | 使用豆包AI重构自定义模块MQTT/Modbus/IEC104/Web API的代码，优化结构，并重新调试 |
-| v3.5.3 | 2025-12-09 | 修复开机自启动功能在linux系统下的报错，开机自启动只在windwos下有效 |
-| v3.5.2 | 2025-11-08 | 增加对M区数据的读写DB编号地址为0时即是读写M区的数据 |
-| v3.5.1 | 2025-11-05 | 把点位的数据类型字符统一转成小写            |
-| v3.5.0 | 2025-07-02 | 弃用modbus-tk库，新增modbus tcp服务端，重写modbus交互方法     |
 ## 九、声明与联系方式
 
 ### 9.1 开源声明
