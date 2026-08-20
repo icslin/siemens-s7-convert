@@ -43,6 +43,9 @@ def check_port_listen(port: int) -> list:
     return res
 
 class StaticResourceManager:
+    '''
+    前端静态文件管理
+    '''
     def __init__(self):
         self.resource_list = [
             {
@@ -60,6 +63,10 @@ class StaticResourceManager:
             {
                 "url": "https://cdn.bootcdn.net/ajax/libs/element-plus/2.8.0/index.min.css",
                 "save_path": "./static/element-plus/index.min.css"
+            },
+            {
+                "url": "https://unpkg.com/@element-plus/icons-vue@2.3.2/dist/index.iife.min.js",
+                "save_path": "./static/element-plus/icons.iife.min.js"
             }
         ]
         self.max_retry = 3
@@ -223,17 +230,11 @@ class DataWebServer:
         return os.path.join(base_path, relative_path)
 
     def clean_expire(self):
-        """清理过期临时数据库文件"""
-        now = time.time()
+        """清理失效文件映射（tmp_db 为上传数据库的持久存放目录，不再自动删除其中文件）"""
         del_list = []
         for fid, path in self.file_map.items():
-            if self.TMP_FOLDER in os.path.abspath(path):
-                if not os.path.exists(path) or now - os.path.getmtime(path) > self.EXPIRE_SEC:
-                    try:
-                        os.remove(path)
-                    except Exception:
-                        pass
-                    del_list.append(fid)
+            if not os.path.exists(path):
+                del_list.append(fid)
         for k in del_list:
             self.file_map.pop(k, None)
 
@@ -252,16 +253,23 @@ class DataWebServer:
             self.clean_expire()
             db_files = []
             suffix_list = (".db", ".sqlite", ".sqlite3")
-            for root, _, files in os.walk(self.LOCAL_DB_ROOT):
-                for fname in files:
-                    if fname.lower().endswith(suffix_list):
-                        full_path = os.path.abspath(os.path.join(root, fname))
-                        rel_path = os.path.relpath(full_path, start=".")
-                        db_files.append({
-                            "rel_path": rel_path,
-                            "filename": fname,
-                            "full_path": full_path
-                        })
+
+            def scan_folder(folder, source):
+                for root, _, files in os.walk(folder):
+                    for fname in files:
+                        if fname.lower().endswith(suffix_list):
+                            full_path = os.path.abspath(os.path.join(root, fname))
+                            rel_path = os.path.relpath(full_path, start=".")
+                            db_files.append({
+                                "rel_path": rel_path,
+                                "filename": fname,
+                                "full_path": full_path,
+                                "source": source
+                            })
+
+            scan_folder(self.LOCAL_DB_ROOT, "local")
+            # 同时扫描 tmp_db：上传的数据库持久存放在该文件夹，网页访问时一并加载展示
+            scan_folder(self.TMP_FOLDER, "upload")
             return jsonify({"code": 200, "data": db_files})
 
         @app.route("/api/load_local_db", methods=["POST"])
@@ -287,11 +295,15 @@ class DataWebServer:
             if "file" not in request.files:
                 return jsonify({"code": 400, "msg": "未选择文件"}), 400
             f = request.files["file"]
+            # 以原文件名直接保存到 tmp_db：同名数据库直接覆盖，不再生成 uuid 前缀的缓存文件
+            raw_name = os.path.basename(f.filename or "")
+            if not raw_name:
+                return jsonify({"code": 400, "msg": "文件名为空"}), 400
+            save_path = os.path.join(self.TMP_FOLDER, raw_name)
+            f.save(save_path)  # 覆盖写入：同名文件直接替换
             fid = str(uuid.uuid4())
-            save_path = os.path.join(self.TMP_FOLDER, f"{fid}_{f.filename}")
-            f.save(save_path)
             self.file_map[fid] = save_path
-            return jsonify({"code": 200, "data": {"file_id": fid, "filename": f.filename}})
+            return jsonify({"code": 200, "data": {"file_id": fid, "filename": raw_name}})
 
         @app.route("/api/tables", methods=["GET"])
         def get_tables():
@@ -544,7 +556,7 @@ class DataWebServer:
                         clear_keys.append(fid)
                 for k in clear_keys:
                     self.file_map.pop(k)
-                return jsonify({"code":200, "msg":"临时缓存清除成功（本地数据库源文件保留）"})
+                return jsonify({"code":200, "msg":"临时缓存清除成功（tmp_db 中上传的数据库已一并清除，本地数据库源文件保留）"})
             except Exception as e:
                 return jsonify({"code":500, "msg":str(e)}),500
 
